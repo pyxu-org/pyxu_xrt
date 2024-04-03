@@ -1,2 +1,18 @@
 doc/
     Add example tutorial notebook.
+
+RayXRT
+    DASK inputs don't work correctly
+    Debug history
+        ray.py [check stash]
+            add dask implementations
+                why is "got here" printed twice? -> due to vectorize()
+                    but why is it so slow?
+
+                cutting nt_spec -> ok (always)
+                cutting x_da -> nok (accumulates error due to box misses I think)
+                    _drjit: robustize
+                        L278: active rays must have at least one non-negligeable origin coord on axis
+
+            adjoint(dask) pending
+            move to extension module
