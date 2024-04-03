@@ -1,9 +1,9 @@
 Pyxu_XRT Documentation
 ######################
 
-This package provides a Pyxu operators to compute samples of the *X-Ray Transform* in 2D and 3D using different methods.
+This package provides Pyxu operators to compute samples of the *X-Ray Transform* in 2D and 3D.
 
-The X-Ray Transform (XRT) of a function $f: \mathbb{R}^{D} \to \mathbb{R}$ is defined as
+The X-Ray Transform (XRT) of a function :math:`f: \mathbb{R}^{D} \to \mathbb{R}` is defined as
 
 .. math::
 
@@ -16,9 +16,9 @@ where :math:`\mathbf{n}\in \mathbb{S}^{D-1}` and :math:`\mathbf{t} \in \mathbf{n
 
 Two class of algorithms exist to evaluate the XRT:
 
-* **Fourier methods** leverage the [Fourier Slice Theorem (FST)](https://en.wikipedia.org/wiki/Projection-slice_theorem)
-  to efficiently evaluate the XRT *when multiple values of* :math:`\mathbf{t}` *are desired for each*
-  :math:`\mathbf{n}`.
+* **Fourier methods** leverage the `Fourier Slice Theorem (FST)
+  <https://en.wikipedia.org/wiki/Projection-slice_theorem>`_ to efficiently evaluate the XRT *when multiple values of*
+  :math:`\mathbf{t}` *are desired for each* :math:`\mathbf{n}`.
 * **Ray methods** compute estimates of the XRT via quadrature rules by assuming :math:`f` is piecewise constant on short
   intervals.
 
@@ -38,13 +38,10 @@ image/volume where:
 
 
 In the 2D case, the parametrization is best explained by the figure below:
-<center>
-<img align="center" src="../_static/api/xray/xray_parametrization.svg" alt="2D XRay Geometry" width=35%>
-</center>
 
-
-Notes
------
+.. image:: ./_static/api/xray/xray_parametrization.svg
+   :width: 35%
+   :alt: 2D XRay Geometry
 
 
 Installation
@@ -55,6 +52,11 @@ You can install ``pyxu_xrt`` via ``pip``:
 .. code-block:: bash
 
    pip install pyxu_xrt
+
+
+The host system must have `CUDA 11.x or 12.x <https://docs.nvidia.com/cuda/>`_ installed to use the GPU. Similarly,
+using [DRJIT]_-backed operators on the CPU requires `LLVM <https://llvm.org/>`_. If problems arise, we provide `Docker
+receipes <https://github.com/pyxu-org/pyxu_docker>`_ to easily create Pyxu user environments.
 
 
 Developer Install
@@ -74,7 +76,6 @@ The HTML docs can be built using Sphinx:
 .. todo::
 
    * Explain how to use it via pyxu imports and not via pyxu_xrt.
-   * Explain why Docker images are required.
 
 
 .. toctree::

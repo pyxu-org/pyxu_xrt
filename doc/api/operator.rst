@@ -1,5 +1,5 @@
 pyxu_xrt.operator
 =================
 
-.. autoclass:: pyxu_finufft.operator.RayXRT
+.. autoclass:: pyxu_xrt.operator.RayXRT
    :exclude-members: asarray
