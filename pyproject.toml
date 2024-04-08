@@ -34,6 +34,10 @@ dependencies = [
     "drjit == 0.4.4",
 ]
 
+# Pyxu Entry Points ===========================================================
+[project.entry-points."pyxu.operator"]
+RayXRT = "pyxu_xrt.operator:RayXRT"
+
 # Optional dependencies =======================================================
 [project.optional-dependencies]
 dev = [ "pyxu[dev]", ]
