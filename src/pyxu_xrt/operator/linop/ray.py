@@ -88,6 +88,7 @@ class RayXRT(pxa.LinOp):
         -----
         * :py:class:`~pyxu_xrt.operator.RayXRT` instances are **not arraymodule-agnostic**: they will only work with
           NDArrays belonging to the same array module as (`n_spec`, `t_spec`).
+          Dask arrays are currently not supported.
         * :py:class:`~pyxu_xrt.operator.RayXRT` is **not** precision-agnostic: it will only work on NDArrays in
           single-precision. A warning is emitted if inputs must be cast.
         """
@@ -155,6 +156,8 @@ class RayXRT(pxa.LinOp):
             assert self._n_spec.chunks[1] == (
                 self.dim_rank,
             ), "[n_spec,t_spec] Chunking along last dimension unsupported."
+
+            raise NotImplementedError  # will change in a future release.
         else:  # init-time instantiation: create drjit variables
             self._dr = self._init_dr_metadata()
 
@@ -198,41 +201,7 @@ class RayXRT(pxa.LinOp):
             #       ( 0,      1,...,  D)
             # * out [ = parts.sum(axis=(-D,...,-1)) ]
             #       (N_ray,), (Bp,)
-
-            # Compute `origin` info.
-            offset = [np.r_[0, chks].cumsum()[:-1] for chks in arr.chunks]
-            offset = np.stack(  # (Bi1,...,BiD, D)
-                np.meshgrid(*offset, indexing="ij"),
-                axis=-1,
-            )
-            origin = xp.asarray(  # (Bi1,...,BiD, D)
-                np.r_[self._origin] + np.r_[self._pitch] * offset,
-                chunks=(1,) * self.dim_rank + (self.dim_rank,),
-            )
-
-            # Compute (I,n,t,orig,o)_ind & output chunks
-            I_ind = tuple(range(1, self.dim_rank + 1))
-            n_ind = (0, self.dim_rank + 1)
-            t_ind = (0, self.dim_rank + 1)
-            orig_ind = (*range(1, self.dim_rank + 1), self.dim_rank + 2)
-            o_ind = tuple(range(self.dim_rank + 1))
-            o_chunks = {d: 1 for d in range(1, self.dim_rank + 1)}
-
-            parts = xp.blockwise(
-                # shape:  (N_ray | Bi1,...,BiD)
-                # bcount: (Bp    | Bi1,...,BiD)
-                *(self._blockwise_apply, o_ind),
-                *(arr, I_ind),
-                *(self._n_spec, n_ind),
-                *(self._t_spec, t_ind),
-                *(origin, orig_ind),
-                dtype=dtype,
-                adjust_chunks=o_chunks,
-                align_arrays=False,
-                concatenate=True,
-                meta=arr._meta,
-            )
-            out = parts.sum(axis=tuple(range(-self.dim_rank, 0)))  # (N_ray,)
+            raise NotImplementedError
         else:  # NUMPY/CUPY
             from . import _drjit as drh
 
@@ -523,41 +492,3 @@ class RayXRT(pxa.LinOp):
             ),
         )
         return meta
-
-    def _blockwise_apply(self, I, n_spec, t_spec, origin) -> pxt.NDArray:
-        # Project rays through sub-volume.
-        # [All arrays are NUMPY/CUPY.]
-        #
-        # Parameters
-        # ----------
-        # I: NDArray[float32]
-        #     (S1,...,SD) sub-volume entries.
-        # n_spec: NDArray[float32]
-        #     (L, D) ray directions :math:`\mathbf{n} \in \mathbb{S}^{D-1}`.
-        # t_spec: NDArray[float32]
-        #     (L, D) offset specifiers :math:`\mathbf{t} \in \mathbb{R}^{D}`.
-        # origin: NDArray[float]
-        #     (<D 1s>, D) bottom-left coordinate of sub-volume.
-        #
-        # Returns
-        # -------
-        # P: NDArray[float32]
-        #     (L, <D 1s>) projection weights.
-        #
-        #     [Note the trailing size-1 dims; these are required since blockwise() expects to
-        #      stack these outputs given how it was called.]
-        select = (0,) * self.dim_rank
-        origin = origin[*select]  # (D,)
-
-        op = RayXRT(
-            dim_shape=I.shape,
-            n_spec=n_spec,
-            t_spec=t_spec,
-            origin=origin,
-            pitch=self._pitch,
-            enable_warnings=self._enable_warnings,
-        )
-        P = op.apply(I)  # (L,)
-
-        expand = (np.newaxis,) * self.dim_rank
-        return P[..., *expand]  # (L, <D 1s>)

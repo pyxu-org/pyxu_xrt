@@ -14,7 +14,11 @@ import pyxu_xrt.operator as pxo
 class TestRayXRT(conftest.LinOpT):
     @pytest.fixture(
         params=itertools.product(
-            pxd.NDArrayInfo,
+            [
+                pxd.NDArrayInfo.NUMPY,
+                pxd.NDArrayInfo.CUPY,
+                # pxd.NDArrayInfo.DASK,  # not yet supported
+            ],
             pxrt.Width,
         )
     )
