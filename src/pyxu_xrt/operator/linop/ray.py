@@ -174,48 +174,7 @@ class RayXRT(pxa.LinOp):
         out: NDArray
             (..., N_ray) XRT samples :math:`P[f_{\mathbf{\alpha}}]`.
         """
-        arr, dtype = self._cast_warn(arr)
-        ndi = pxd.NDArrayInfo.from_obj(arr)
-        xp = ndi.module()
-
-        if ndi == pxd.NDArrayInfo.DASK:
-            # High-level idea:
-            # 1. foreach (nt_spec, I-chunk) pair: compute projections.
-            # 2. collapse projections across all I-chunks.
-            #
-            # Concretely, we rely on DASK.blockwise() to achieve this.
-            #
-            # For each sub-problem to compute the right outputs, it must know "where" the I-chunk is located in space,
-            # i.e. what `origin` is for that chunk.  As such we need to encode the chunk origins as an array and give
-            # them to blockwise(). This is encoded in `origin` below.
-            #
-            # Reminder of array shape/block structures that blockwise() will use:
-            # [legend] array: shape, blocks/dim, dimension index {see blockwise().}]
-            # * I: (N1,...,ND), (Bi1,...,BiD), (1,...,D)
-            # * n_spec: (N_ray, D), (Bp, 1), (0, D+1)
-            # * t_spec: (N_ray, D), (Bp, 1), (0, D+1)
-            # * origin: (Bi1,...,BiD, D), (Bi1,...,BiD, 1), (1,...,D, D+2)
-            # * parts: [ this is the output of blockwise() ]
-            #       (N_ray, Bi1,...,BiD),
-            #       (Bp,    Bi1,...,BiD), -> we 'sumed' over the single-block axes (D+1, D+2)
-            #       ( 0,      1,...,  D)
-            # * out [ = parts.sum(axis=(-D,...,-1)) ]
-            #       (N_ray,), (Bp,)
-            raise NotImplementedError
-        else:  # NUMPY/CUPY
-            from . import _drjit as drh
-
-            # Load the right drjit function
-            drb = drh._load_dr_variant(ndi)
-            fwd, _ = drh._build_xrt(drb, D=self.dim_rank, weighted=False)
-
-            # Transform (I,) to drjit data structure
-            _I = arr.ravel()  # (N1*...*ND,) contiguous
-            I_dr = drb.Float(drh._xp2dr(_I))
-
-            # Compute projections
-            P = fwd(**self._dr, I=I_dr)
-            out = xp.asarray(P, dtype=dtype)
+        out = self._transform(arr, mode="fw", weighted=False)
         return out
 
     @pxrt.enforce_precision(i="arr")
@@ -231,27 +190,7 @@ class RayXRT(pxa.LinOp):
         out: NDArray
             (..., N1,...,ND) back-projected spatial weights :math:`\mathbf{\alpha}`.
         """
-        arr, dtype = self._cast_warn(arr)
-        ndi = pxd.NDArrayInfo.from_obj(arr)
-        xp = ndi.module()
-
-        if ndi == pxd.NDArrayInfo.DASK:
-            raise NotImplementedError
-        else:  # NUMPY/CUPY
-            from . import _drjit as drh
-
-            # Load the right drjit function
-            drb = drh._load_dr_variant(ndi)
-            _, bwd = drh._build_xrt(drb, D=self.dim_rank, weighted=False)
-
-            # Transform (P,) to drjit data structure
-            P = arr.ravel()  # (N_ray,) contiguous
-            P_dr = drb.Float(drh._xp2dr(P))
-
-            # Compute back-projections
-            _I = bwd(**self._dr, P=P_dr)
-            _I = xp.asarray(_I, dtype=dtype)
-            out = _I.reshape(self.dim_shape)  # (N1,...,ND)
+        out = self._transform(arr, mode="bw", weighted=False)
         return out
 
     def asarray(self, **kwargs) -> pxt.NDArray:
@@ -492,3 +431,48 @@ class RayXRT(pxa.LinOp):
             ),
         )
         return meta
+
+    def _transform(self, x: pxt.NDArray, mode: str, weighted: bool) -> pxt.NDArray:
+        # Compute (un-)weighted XRT or back-projections.
+        #
+        # Parameters
+        # ----------
+        # x:   mode=fw -> (N1,...,ND) [NUMPY/CUPY/DASK]
+        #           bw -> (N_ray,)
+        #
+        # Returns
+        # -------
+        # out: mode=fw -> (N_ray,)
+        #           bw -> (N1,...,ND)
+        from . import _drjit as drh
+
+        ndi = pxd.NDArrayInfo.from_obj(x)
+        if ndi == pxd.NDArrayInfo.DASK:
+            raise NotImplementedError
+        xp = ndi.module()
+
+        # Load the right drjit function
+        drb = drh._load_dr_variant(ndi)
+        fwd, bwd = drh._build_xrt(drb, D=self.dim_rank, weighted=weighted)
+
+        x, dtype = self._cast_warn(x)
+        if mode == "fw":
+            # Transform (I,) to drjit data structure
+            _I = x.ravel()  # (N1*...*ND,) contiguous
+            I_dr = drb.Float(drh._xp2dr(_I))
+
+            # Compute projections
+            P = fwd(**self._dr, I=I_dr)
+            out = xp.asarray(P, dtype=dtype)
+        elif mode == "bw":
+            # Transform (P,) to drjit data structure
+            P = x.ravel()  # (N_ray,) contiguous
+            P_dr = drb.Float(drh._xp2dr(P))
+
+            # Compute back-projections
+            _I = bwd(**self._dr, P=P_dr)
+            _I = xp.asarray(_I, dtype=dtype)
+            out = _I.reshape(self.dim_shape)  # (N1,...,ND)
+        else:
+            raise NotImplementedError
+        return out
