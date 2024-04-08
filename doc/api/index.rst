@@ -24,6 +24,7 @@ pyxu_xrt.operator
 .. autosummary::
 
    ~pyxu_xrt.operator.RayXRT
+   ~pyxu_xrt.operator.RayWXRT
 
 
 .. toctree::
