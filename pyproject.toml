@@ -17,6 +17,7 @@ authors = [
     { name = "S. Kashani", email = "sepand@kashani.ch" },
 ]
 classifiers = [
+    "Framework :: Pycsou",
     "Topic :: Scientific/Engineering",
     "Intended Audience :: Science/Research",
     "Development Status :: 4 - Beta",
