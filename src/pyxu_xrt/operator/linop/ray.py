@@ -52,8 +52,11 @@ class RayXRT(pxa.LinOp):
 
     Notes
     -----
-    * :py:class:`~pyxu_xrt.operator.RayXRT` requires LLVM installed on the system. See the `Dr.Jit documentation
-      <https://drjit.readthedocs.io/en/latest/index.html>`_ for details.
+    * Using :py:class:`~pyxu_xrt.operator.RayXRT` on the CPU requires LLVM.
+      See the `Dr.Jit documentation <https://drjit.readthedocs.io/en/latest/index.html>`_ for details.
+    * Using :py:class:`~pyxu_xrt.operator.RayXRT` on the GPU requires installing Pyxu with GPU add-ons.
+      See the `Pyxu install guide
+      <https://pyxu-org.github.io/intro/installation.html#installation-with-optional-dependencies>`_ for details.
     """
 
     def __init__(
