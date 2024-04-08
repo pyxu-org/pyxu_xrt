@@ -167,12 +167,12 @@ class RayXRT(pxa.LinOp):
         Parameters
         ----------
         arr: NDArray
-            (..., N1,...,ND) spatial weights.
+            (..., N1,...,ND) spatial weights :math:`\mathbf{\alpha}`.
 
         Returns
         -------
         out: NDArray
-            (..., N_ray) XRT samples.
+            (..., N_ray) XRT samples :math:`P[f_{\mathbf{\alpha}}]`.
         """
         arr, dtype = self._cast_warn(arr)
         ndi = pxd.NDArrayInfo.from_obj(arr)
@@ -224,12 +224,12 @@ class RayXRT(pxa.LinOp):
         Parameters
         ----------
         arr: NDArray
-            (..., N_ray) XRT samples.
+            (..., N_ray) XRT samples :math:`P[f_{\mathbf{\alpha}}]`.
 
         Returns
         -------
         out: NDArray
-            (..., N1,...,ND) spatial weights.
+            (..., N1,...,ND) back-projected spatial weights :math:`\mathbf{\alpha}`.
         """
         arr, dtype = self._cast_warn(arr)
         ndi = pxd.NDArrayInfo.from_obj(arr)
