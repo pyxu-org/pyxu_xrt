@@ -37,6 +37,7 @@ dependencies = [
 # Pyxu Entry Points ===========================================================
 [project.entry-points."pyxu.operator"]
 RayXRT = "pyxu_xrt.operator:RayXRT"
+RayWXRT = "pyxu_xrt.operator:RayWXRT"
 
 # Optional dependencies =======================================================
 [project.optional-dependencies]
