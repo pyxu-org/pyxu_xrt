@@ -12,6 +12,7 @@ import pyxu.util as pxu
 
 __all__ = [
     "RayXRT",
+    "RayWXRT",
 ]
 
 
@@ -476,3 +477,185 @@ class RayXRT(pxa.LinOp):
         else:
             raise NotImplementedError
         return out
+
+
+class RayWXRT(RayXRT):
+    r"""
+    Weighted X-Ray Transform (for :math:`D = \{2, 3\}`).
+
+    The Weighted X-Ray Transform (WXRT) of a function :math:`f: \mathbb{R}^{D} \to \mathbb{R}` is defined as
+
+    .. math::
+
+        \mathcal{P}_{w}[f](\mathbf{n}, \mathbf{t})
+        =
+        \int_{\mathbb{R}} f(\mathbf{t} + \mathbf{n} \alpha)
+        \exp\left[ -\int_{-\infty}^{\alpha} w(\mathbf{t} + \mathbf{n} \beta) d\beta \right]
+        d\alpha,
+
+    where :math:`\mathbf{n}\in \mathbb{S}^{D-1}` and :math:`\mathbf{t} \in \mathbf{n}^{\perp}`.
+    :math:`\mathcal{P}_{w}[f]` hence denotes the set of *weighted line integrals* of :math:`f`.
+
+    This implementation computes samples of the WXRT using a ray-marching method based on the `Dr.Jit
+    <https://drjit.readthedocs.io/en/latest/reference.html>`_ compiler. It assumes :math:`(f,w)` are pixelized
+    image/volumes where:
+
+    * the lower-left element of :math:`(f,w)` are located at :math:`\mathbf{o} \in \mathbb{R}^{D}`,
+    * pixel dimensions are :math:`\mathbf{\Delta} \in \mathbb{R}_{+}^{D}`, i.e.
+
+    .. math::
+
+       \begin{align*}
+           f(\mathbf{r}) & = \sum_{\{\mathbf{q}\} \subset \mathbb{N}^{D}}
+                             \alpha_{\mathbf{q}}
+                             1_{[\mathbf{0}, \mathbf{\Delta}]}(\mathbf{r} - \mathbf{q} \odot \mathbf{\Delta} - \mathbf{o}),
+                             \quad
+                             \alpha_{\mathbf{q}} \in \mathbb{R}, \\
+           w(\mathbf{r}) & = \sum_{\{\mathbf{q}\} \subset \mathbb{N}^{D}}
+                             \gamma_{\mathbf{q}}
+                             1_{[\mathbf{0}, \mathbf{\Delta}]}(\mathbf{r} - \mathbf{q} \odot \mathbf{\Delta} - \mathbf{o}),
+                             \quad
+                             \gamma_{\mathbf{q}} \in \mathbb{R}.
+       \end{align*}
+
+    .. image:: /_static/api/xray/wxray_parametrization.svg
+       :alt: 2D weighted XRay Geometry
+       :width: 50%
+       :align: center
+
+    Notes
+    -----
+    * Using :py:class:`~pyxu_xrt.operator.RayWXRT` on the CPU requires LLVM.
+      See the `Dr.Jit documentation <https://drjit.readthedocs.io/en/latest/index.html>`_ for details.
+    * Using :py:class:`~pyxu_xrt.operator.RayWXRT` on the GPU requires installing Pyxu with GPU add-ons.
+      See the `Pyxu install guide
+      <https://pyxu-org.github.io/intro/installation.html#installation-with-optional-dependencies>`_ for details.
+    """
+
+    def __init__(
+        self,
+        dim_shape: pxt.NDArrayShape,
+        n_spec: pxt.NDArray,
+        t_spec: pxt.NDArray,
+        w_spec: pxt.NDArray,
+        origin: tuple[float] = 0,
+        pitch: tuple[float] = 1,
+        enable_warnings: bool = True,
+    ):
+        r"""
+        Parameters
+        ----------
+        dim_shape: NDArrayShape
+            (N1,...,ND) pixel count in each dimension.
+        n_spec: NDArray
+            (N_ray, D) ray directions :math:`\mathbf{n} \in \mathbb{S}^{D-1}`.
+        t_spec: NDArray
+            (N_ray, D) offset specifiers :math:`\mathbf{t} \in \mathbb{R}^{D}`.
+        w_spec: NDArray
+            (N1,...,ND) spatial decay weights :math:`\gamma \in \mathbb{R}`.
+        origin: float, tuple[float]
+            Bottom-left coordinate :math:`\mathbf{o} \in \mathbb{R}^{D}`.
+        pitch: float, tuple[float]
+            Pixel size :math:`\mathbf{\Delta} \in \mathbb{R}_{+}^{D}`.
+        enable_warnings: bool
+            If ``True``, emit a warning in case of precision mis-match issues.
+
+        Notes
+        -----
+        * :py:class:`~pyxu_xrt.operator.RayWXRT` instances are **not arraymodule-agnostic**: they will only work with
+          NDArrays belonging to the same array module as (`n_spec`, `t_spec`, `w_spec`).
+          Dask arrays are currently not supported.
+        * :py:class:`~pyxu_xrt.operator.RayWXRT` is **not** precision-agnostic: it will only work on NDArrays in
+          single-precision. A warning is emitted if inputs must be cast.
+        """
+        # Put all variables in canonical form & validate ----------------------
+        #   w_spec: (*dim_shape,) array[float32] (NUMPY/CUPY/DASK)
+        dim_shape = pxu.as_canonical_shape(dim_shape)
+        assert w_spec.shape == dim_shape
+        assert operator.eq(  # t_spec compliance tested in __init__() call below.
+            pxd.NDArrayInfo.from_obj(n_spec),
+            pxd.NDArrayInfo.from_obj(w_spec),
+        ), "[n_spec,t_spec,w_spec] Must belong to the same array backend."
+
+        # Initialize Operator Variables ---------------------------------------
+        xp = pxu.get_array_module(w_spec)
+        self._w_spec = xp.require(
+            w_spec,  # (N1,...,ND)
+            dtype=pxrt.Width.SINGLE.value,
+            requirements="C",  # allows zero-copy in _init_dr_metadata()
+        )
+        super().__init__(
+            dim_shape=dim_shape,
+            n_spec=n_spec,
+            t_spec=t_spec,
+            origin=origin,
+            pitch=pitch,
+            enable_warnings=enable_warnings,
+        )
+
+        # Cheap analytical Lipschitz upper bound given by
+        #   \sigma_{\max}(P) <= \norm{P}{F},
+        # with
+        #   \norm{P}{F}^{2}
+        #   <= (max cell weight)^{2} * #non-zero elements
+        #    = (max cell weight)^{2} * N_ray * (maximum number of cells traversable by a ray)
+        #    = (max cell weight)^{2} * N_ray * \norm{arg_shape}{2}
+        #
+        #    (max cell weight) =
+        #        w_min > 0: \norm{pitch}{2}
+        #        w_min < 0: cannot infer
+        if w_spec.min() < 0:
+            max_cell_weight = np.inf
+        else:
+            max_cell_weight = np.linalg.norm(pitch)
+        self.lipschitz = max_cell_weight * np.sqrt(self.codim_size * np.linalg.norm(self.dim_shape))
+
+    @pxrt.enforce_precision(i="arr")
+    def apply(self, arr: pxt.NDArray) -> pxt.NDArray:
+        r"""
+        Parameters
+        ----------
+        arr: NDArray
+            (..., N1,...,ND) spatial weights :math:`\mathbf{\alpha}`.
+
+        Returns
+        -------
+        out: NDArray
+            (..., N_ray) WXRT samples :math:`P_{w}[f_{\mathbf{\alpha}}]`.
+        """
+        out = self._transform(arr, mode="fw", weighted=True)
+        return out
+
+    @pxrt.enforce_precision(i="arr")
+    def adjoint(self, arr: pxt.NDArray) -> pxt.NDArray:
+        r"""
+        Parameters
+        ----------
+        arr: NDArray
+            (..., N_ray) WXRT samples :math:`P_{w}[f_{\mathbf{\alpha}}]`.
+
+        Returns
+        -------
+        out: NDArray
+            (..., N1,...,ND) back-projected spatial weights :math:`\mathbf{\alpha}`.
+        """
+        out = self._transform(arr, mode="bw", weighted=True)
+        return out
+
+    # Internal Helpers --------------------------------------------------------
+    def _init_dr_metadata(self) -> dict:
+        # Compute all RayWXRT parameters.
+        #
+        # * o: (D,) Arrayf          [volume reference point]
+        # * pitch: (D,) Arrayf      [pixel pitch]
+        # * N: (D,) Arrayu          [pixel count]
+        # * r: (N_ray,) Rayf        [zero-copy view of (n_spec, t_spec)]
+        # * w: (N1*...*ND,) Float   [zero-copy view of (w_spec,)]
+        from . import _drjit as drh
+
+        ndi = pxd.NDArrayInfo.from_obj(self._n_spec)
+        drb = drh._load_dr_variant(ndi)
+
+        meta = super()._init_dr_metadata()
+        meta["w"] = drb.Float(drh._xp2dr(self._w_spec.ravel()))
+        return meta
