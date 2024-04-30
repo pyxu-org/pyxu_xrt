@@ -1,1 +1,1 @@
-from pyxu_xrt.operator.linop.ray import *
+from pyxu_xrt.operator.ray import *
