@@ -31,7 +31,7 @@ urls.download = "https://github.com/pyxu-org/pyxu_xrt"
 dependencies = [
     # "pyxu >= 2.0, < 3",
     "pyxu",
-    "drjit == 0.4.4",
+    "drjit == 0.4.6",
 ]
 
 # Pyxu Entry Points ===========================================================
