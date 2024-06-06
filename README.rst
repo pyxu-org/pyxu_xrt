@@ -7,9 +7,9 @@ pyxu_xrt
 .. image:: https://img.shields.io/pypi/v/pyxu_xrt.svg?color=green
    :target: https://pypi.org/project/pyxu_xrt
    :alt: PyPI
-.. image:: https://img.shields.io/endpoint?url=https://pyxu-org.github.io/fair/shields/pyxu_xrt
-   :alt: Pyxu score
-   :target: https://pyxu-org.github.io/fair/score.html
+.. .. image:: https://img.shields.io/endpoint?url=https://pyxu-org.github.io/fair/shields/pyxu_xrt
+..    :alt: Pyxu score
+..    :target: https://pyxu-org.github.io/fair/score.html
 
 Pyxu X-Ray Transform Operators
 ------------------------------
